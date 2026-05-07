@@ -14,7 +14,7 @@
  */
 
 import { Worker, Job } from 'bullmq';
-import youtubedl from 'youtube-dl-exec';
+import ytDlp from 'yt-dlp-exec';
 import { Telegraf } from 'telegraf';
 import { Agent } from 'https';
 import path from 'path';
@@ -30,6 +30,15 @@ dotenv.config();
 // ─── Configuration ────────────────────────────────────────────────────────────
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const DB_URL = process.env.DB_URL;
+const TELEGRAM_API_ROOT = process.env.TELEGRAM_API_ROOT?.trim() || 'https://api.telegram.org';
+const USING_LOCAL_BOT_API = !/https:\/\/api\.telegram\.org\/?$/i.test(TELEGRAM_API_ROOT);
+const DEFAULT_MAX_UPLOAD_MB = USING_LOCAL_BOT_API ? 2000 : 50;
+const TELEGRAM_MAX_UPLOAD_MB_ENV = process.env.TELEGRAM_MAX_UPLOAD_MB?.trim();
+const parsedMaxUploadMb = TELEGRAM_MAX_UPLOAD_MB_ENV ? Number(TELEGRAM_MAX_UPLOAD_MB_ENV) : 0;
+const TELEGRAM_MAX_UPLOAD_MB: number = (Number.isFinite(parsedMaxUploadMb) && parsedMaxUploadMb > 0)
+    ? parsedMaxUploadMb
+    : DEFAULT_MAX_UPLOAD_MB;
+const MAX_UPLOAD_BYTES = TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024;
 
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN must be provided in .env file');
 if (!DB_URL) throw new Error('DB_URL must be provided in .env file');
@@ -38,7 +47,7 @@ if (!DB_URL) throw new Error('DB_URL must be provided in .env file');
 const telegram = new Telegraf(BOT_TOKEN, {
     telegram: {
         agent: new Agent({ keepAlive: true, family: 4 }),
-        apiRoot: 'https://api.telegram.org',
+        apiRoot: TELEGRAM_API_ROOT,
     },
 }).telegram;
 
@@ -46,7 +55,7 @@ const telegram = new Telegraf(BOT_TOKEN, {
 const mongoClient = new MongoClient(DB_URL, {
     maxPoolSize: 5,
     serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
+    socketTimeoutMS: 10000,
     retryWrites: true,
     tls: true,
     tlsAllowInvalidCertificates: false,
@@ -115,10 +124,10 @@ async function processVideoJob(job: Job<VideoJobData>) {
     try {
         await editStatus(chatId, statusMessageId, '🔍 Video tayyorlanmoqda...');
 
-        const info = await youtubedl(cleanUrl, {
+        const info = await ytDlp(cleanUrl, {
             dumpSingleJson: true,
             noPlaylist: true,
-            noCheckCertificates: true,
+            noCheckCertificate: true,
             preferFreeFormats: true,
         }) as any;
 
@@ -133,12 +142,12 @@ async function processVideoJob(job: Job<VideoJobData>) {
             durationFormatted = `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
-        // Check Telegram's 50 MB upload limit (pre-download)
-        if (fileSize > 50 * 1024 * 1024) {
+        // Check upload limit (pre-download)
+        if (fileSize > MAX_UPLOAD_BYTES) {
             await editStatus(
                 chatId,
                 statusMessageId,
-                `⚠️ Uzr, videoning hajmi juda katta (${sizeMB} MB). Men faqat 50 MB gacha bo'lgan videolarni yuklay olaman.`
+                `⚠️ Uzr, videoning hajmi juda katta (${sizeMB} MB). Men faqat ${TELEGRAM_MAX_UPLOAD_MB} MB gacha bo'lgan videolarni yuklay olaman.`
             );
             return;
         }
@@ -159,11 +168,11 @@ async function processVideoJob(job: Job<VideoJobData>) {
     const outputPath = path.resolve(process.cwd(), `video_${job.id}_${Date.now()}.mp4`);
 
     try {
-        await youtubedl(cleanUrl, {
+        await ytDlp(cleanUrl, {
             output: outputPath,
             format: 'best[ext=mp4]/best',
             noPlaylist: true,
-            noCheckCertificates: true,
+            noCheckCertificate: true,
         });
     } catch (dlErr: any) {
         console.error(`❌ [Job ${job.id}] Download error:`, dlErr.message);
@@ -183,12 +192,12 @@ async function processVideoJob(job: Job<VideoJobData>) {
     const actualSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
     // Re-check size after actual download
-    if (stats.size > 50 * 1024 * 1024) {
+    if (stats.size > MAX_UPLOAD_BYTES) {
         fs.unlinkSync(outputPath);
         await editStatus(
             chatId,
             statusMessageId,
-            `⚠️ Uzr, yuklab olingan video hajmi juda katta (${actualSizeMB} MB). Men faqat 50 MB gacha bo'lgan videolarni yuklay olaman.`
+            `⚠️ Uzr, yuklab olingan video hajmi juda katta (${actualSizeMB} MB). Men faqat ${TELEGRAM_MAX_UPLOAD_MB} MB gacha bo'lgan videolarni yuklay olaman.`
         );
         return;
     }

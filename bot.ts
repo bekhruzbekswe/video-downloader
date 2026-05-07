@@ -9,6 +9,7 @@ dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const DB_URL = process.env.DB_URL;
+const TELEGRAM_API_ROOT = process.env.TELEGRAM_API_ROOT?.trim() || 'https://api.telegram.org';
 
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN must be provided in .env file');
 if (!DB_URL) throw new Error('DB_URL must be provided in .env file');
@@ -18,7 +19,7 @@ const bot = new Telegraf(BOT_TOKEN, {
     handlerTimeout: 90_000,
     telegram: {
         agent: new Agent({ keepAlive: true, family: 4 }),
-        apiRoot: 'https://api.telegram.org',
+        apiRoot: TELEGRAM_API_ROOT,
     },
 });
 
@@ -27,7 +28,7 @@ const mongoClient = new MongoClient(DB_URL, {
     maxPoolSize: 10,
     minPoolSize: 2,
     serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
+    socketTimeoutMS: 10000,
     retryWrites: true,
     retryReads: true,
     tls: true,
@@ -41,11 +42,18 @@ let isDbConnected = false;
 async function getCachedVideo(url: string): Promise<{ fileId: string; caption?: string } | null> {
     if (!isDbConnected) return null;
     try {
-        const result = await collection.findOne({ url }, { maxTimeMS: 2000 });
+        // Wrap in Promise.race with a hard timeout to prevent handler from hanging
+        const result = await Promise.race([
+            collection.findOne({ url }, { maxTimeMS: 2000 }),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Cache lookup timeout')), 3000)
+            ),
+        ]) as any;
+
         if (!result) return null;
         return { fileId: result.fileId as string, caption: result.caption as string };
     } catch (err: any) {
-        console.error('DB Get Error:', err.message);
+        // Silently return null on any error to avoid blocking the handler
         return null;
     }
 }
@@ -79,12 +87,21 @@ bot.on('text', async (ctx: Context) => {
 
         if (cached) {
             console.log('⚡ CACHE HIT! Sending instantly...');
-            await ctx.sendChatAction('upload_video');
-            await ctx.replyWithVideo(cached.fileId, {
-                caption: cached.caption || '🎥 Mana sizning videongiz!',
-                parse_mode: 'HTML',
-                reply_parameters: { message_id: messageId },
-            });
+            
+            // Wrap Telegram calls in timeout to prevent handler hang
+            await Promise.race([
+                (async () => {
+                    await ctx.sendChatAction('upload_video');
+                    await ctx.replyWithVideo(cached.fileId, {
+                        caption: cached.caption || '🎥 Mana sizning videongiz!',
+                        parse_mode: 'HTML',
+                        reply_parameters: { message_id: messageId },
+                    });
+                })(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Telegram API timeout')), 20000)
+                ),
+            ]);
             return;
         }
 
@@ -93,10 +110,15 @@ bot.on('text', async (ctx: Context) => {
 
         // Send a friendly status message and pass its ID to the worker
         // so it can update the user with real-time progress.
-        const statusMessage = await ctx.reply(
-            '⏳ Video yuklanmoqda... Bir oz kuting.',
-            { reply_parameters: { message_id: messageId } }
-        );
+        const statusMessage = await Promise.race([
+            ctx.reply(
+                '⏳ Video yuklanmoqda... Bir oz kuting.',
+                { reply_parameters: { message_id: messageId } }
+            ),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Telegram API timeout')), 10000)
+            ),
+        ]) as any;
 
         await videoQueue.add(
             'download',
@@ -113,10 +135,19 @@ bot.on('text', async (ctx: Context) => {
 
         console.log(`✅ Job enqueued for chat ${chatId}`);
     } catch (error: any) {
-        console.error('Error enqueuing job:', error.message);
-        await ctx.reply(`❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.`, {
-            reply_parameters: { message_id: messageId },
-        });
+        console.error('Error processing message:', error.message);
+        try {
+            await Promise.race([
+                ctx.reply(`❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.`, {
+                    reply_parameters: { message_id: messageId },
+                }),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Telegram API timeout')), 5000)
+                ),
+            ]);
+        } catch {
+            // Error reply also failed - just log and continue
+        }
     }
 });
 
