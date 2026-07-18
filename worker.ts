@@ -57,8 +57,6 @@ const mongoClient = new MongoClient(DB_URL, {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 10000,
     retryWrites: true,
-    tls: true,
-    tlsAllowInvalidCertificates: false,
 });
 
 let db: Db;

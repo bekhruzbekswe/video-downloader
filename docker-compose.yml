@@ -1,0 +1,66 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  bot:
+    image: bekhruzbekswe/video-downloader:latest
+    build: .
+    command: ["node", "dist/bot.js"]
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+      DB_URL: ${DB_URL:-mongodb://mongo:27017/media_downloader}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      TELEGRAM_API_ROOT: ${TELEGRAM_API_ROOT:-https://api.telegram.org}
+      TELEGRAM_MAX_UPLOAD_MB: ${TELEGRAM_MAX_UPLOAD_MB:-}
+    depends_on:
+      - mongo
+      - redis
+
+  worker:
+    image: bekhruzbekswe/video-downloader:latest
+    build: .
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+      DB_URL: ${DB_URL:-mongodb://mongo:27017/media_downloader}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      TELEGRAM_API_ROOT: ${TELEGRAM_API_ROOT:-https://api.telegram.org}
+      TELEGRAM_MAX_UPLOAD_MB: ${TELEGRAM_MAX_UPLOAD_MB:-}
+    depends_on:
+      - mongo
+      - redis
+
+  # Optional: only needed if you want uploads bigger than Telegram's 50MB
+  # cloud-API cap. Requires TELEGRAM_API_ID/TELEGRAM_API_HASH from
+  # https://my.telegram.org/apps, and set TELEGRAM_API_ROOT=http://telegram-bot-api:8081
+  # in .env. Start with: docker compose --profile local-api up -d
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    restart: unless-stopped
+    profiles: ["local-api"]
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
+    command: ["--local"]
+    volumes:
+      - tgapi_data:/var/lib/telegram-bot-api
+
+volumes:
+  mongo_data:
+  redis_data:
+  tgapi_data:
