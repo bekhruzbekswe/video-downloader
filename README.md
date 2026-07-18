@@ -42,20 +42,8 @@ docker compose --profile local-api up -d --build
 
 ## YouTube blocking downloads ("Sign in to confirm you're not a bot")
 
-YouTube increasingly requires an authenticated session to extract most videos — this affects
-any yt-dlp-based tool, not just this bot, and is not something a retry or a JS runtime fixes on
-its own. The reliable workaround is passing yt-dlp real session cookies:
-
-1. Log into YouTube in a real browser and export cookies with an extension like
-   [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
-2. Save the file as `cookies.txt` in the project root
-3. Uncomment the `volumes:` line under the `worker` service in `docker-compose.yml`
-4. `docker compose up -d`
-
-Notes: cookies expire and need periodic re-export; use a secondary/throwaway Google account
-rather than your main one, since automated bulk downloading through it carries some risk of
-that account getting flagged by YouTube's abuse detection. Instagram/TikTok links aren't
-affected by this and don't need cookies.
+`worker.ts` passes `--extractor-args youtube:player_client=android` to yt-dlp, which avoids
+YouTube's bot-check wall for most videos without needing any account or cookies.
 
 ## Logs
 

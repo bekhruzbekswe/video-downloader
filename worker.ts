@@ -44,15 +44,6 @@ const MAX_UPLOAD_BYTES = TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024;
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN must be provided in .env file');
 if (!DB_URL) throw new Error('DB_URL must be provided in .env file');
 
-// YouTube increasingly requires an authenticated session to extract most
-// videos ("Sign in to confirm you're not a bot"). If a Netscape-format
-// cookies.txt is mounted at this path, pass it through to yt-dlp; otherwise
-// omit the flag entirely so unauthenticated setups keep working as before.
-const COOKIES_PATH = '/app/cookies.txt';
-const cookiesOption = fs.existsSync(COOKIES_PATH) && fs.statSync(COOKIES_PATH).isFile()
-    ? { cookies: COOKIES_PATH }
-    : {};
-
 // Telegraf bot instance (used only to send messages FROM the worker)
 // The agent class must match the apiRoot's protocol — an https.Agent used
 // against a plain-http local Bot API server silently hangs instead of erroring.
@@ -170,8 +161,8 @@ async function processVideoJob(job: Job<VideoJobData>) {
             noPlaylist: true,
             noCheckCertificate: true,
             preferFreeFormats: true,
-            ...cookiesOption,
-        }) as any;
+            extractorArgs: 'youtube:player_client=android',
+        } as any) as any;
 
         title = info.title || 'Video';
         fileSize = info.filesize || info.filesize_approx || 0;
@@ -215,8 +206,8 @@ async function processVideoJob(job: Job<VideoJobData>) {
             format: 'best[ext=mp4]/best',
             noPlaylist: true,
             noCheckCertificate: true,
-            ...cookiesOption,
-        });
+            extractorArgs: 'youtube:player_client=android',
+        } as any);
     } catch (dlErr: any) {
         console.error(`❌ [Job ${job.id}] Download error:`, dlErr.message);
         await editStatus(chatId, statusMessageId, describeDownloadError(dlErr.message));

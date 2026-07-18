@@ -44,11 +44,6 @@ services:
     depends_on:
       - mongo
       - redis
-    # Optional: if YouTube consistently blocks downloads with "Sign in to
-    # confirm you're not a bot", export cookies.txt from a real logged-in
-    # session (see README) and uncomment this to let yt-dlp use it.
-    # volumes:
-    #   - ./cookies.txt:/app/cookies.txt:ro
 
   # Optional: only needed if you want uploads bigger than Telegram's 50MB
   # cloud-API cap. Requires TELEGRAM_API_ID/TELEGRAM_API_HASH from
