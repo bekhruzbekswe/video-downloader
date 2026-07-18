@@ -44,6 +44,15 @@ const MAX_UPLOAD_BYTES = TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024;
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN must be provided in .env file');
 if (!DB_URL) throw new Error('DB_URL must be provided in .env file');
 
+// YouTube increasingly requires an authenticated session to extract most
+// videos ("Sign in to confirm you're not a bot"). If a Netscape-format
+// cookies.txt is mounted at this path, pass it through to yt-dlp; otherwise
+// omit the flag entirely so unauthenticated setups keep working as before.
+const COOKIES_PATH = '/app/cookies.txt';
+const cookiesOption = fs.existsSync(COOKIES_PATH) && fs.statSync(COOKIES_PATH).isFile()
+    ? { cookies: COOKIES_PATH }
+    : {};
+
 // Telegraf bot instance (used only to send messages FROM the worker)
 // The agent class must match the apiRoot's protocol — an https.Agent used
 // against a plain-http local Bot API server silently hangs instead of erroring.
@@ -114,7 +123,7 @@ function describeDownloadError(message: string): string {
     const m = (message || '').toLowerCase();
 
     if (m.includes('sign in to confirm') || (m.includes('confirm') && m.includes('bot'))) {
-        return "🤖 YouTube bu so'rovni shubhali (bot) deb belgiladi va kirishni talab qilmoqda. Bu odatda vaqtinchalik bo'ladi — bir necha daqiqadan so'ng qayta urinib ko'ring.";
+        return "🤖 YouTube bu havola uchun tizimga kirishni (autentifikatsiya) talab qilmoqda — bu qayta urinishda o'zi tuzalmaydi. Instagram yoki TikTok havolalarini sinab ko'ring, yoki botni sozlovchiga xabar bering.";
     }
     if (m.includes('429') || m.includes('too many requests')) {
         return "⏳ Juda ko'p so'rov yuborilgani uchun server vaqtincha cheklamoqda. Bir necha daqiqadan so'ng qayta urinib ko'ring.";
@@ -161,6 +170,7 @@ async function processVideoJob(job: Job<VideoJobData>) {
             noPlaylist: true,
             noCheckCertificate: true,
             preferFreeFormats: true,
+            ...cookiesOption,
         }) as any;
 
         title = info.title || 'Video';
@@ -205,6 +215,7 @@ async function processVideoJob(job: Job<VideoJobData>) {
             format: 'best[ext=mp4]/best',
             noPlaylist: true,
             noCheckCertificate: true,
+            ...cookiesOption,
         });
     } catch (dlErr: any) {
         console.error(`❌ [Job ${job.id}] Download error:`, dlErr.message);
