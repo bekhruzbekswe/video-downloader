@@ -123,10 +123,10 @@ function describeDownloadError(message: string): string {
     const m = (message || '').toLowerCase();
 
     if (m.includes('sign in to confirm') || (m.includes('confirm') && m.includes('bot'))) {
-        return "🤖 YouTube bu havola uchun tizimga kirishni (autentifikatsiya) talab qilmoqda — bu qayta urinishda o'zi tuzalmaydi. Instagram yoki TikTok havolalarini sinab ko'ring, yoki botni sozlovchiga xabar bering.";
+        return "🤖 YouTube injiqlik qilyapti, iltimos birozdan so'ng qayta urinib ko'ring yoki @pullstackdeveloper ga murojaat qiling.";
     }
     if (m.includes('429') || m.includes('too many requests')) {
-        return "⏳ Juda ko'p so'rov yuborilgani uchun server vaqtincha cheklamoqda. Bir necha daqiqadan so'ng qayta urinib ko'ring.";
+        return "🤖 YouTube yana injiqlik qilyapti (juda ko'p so'rov), birozdan so'ng qayta urinib ko'ring.";
     }
     if (m.includes('private video') || m.includes('video unavailable') || m.includes('video is unavailable')) {
         return "🔒 Bu video mavjud emas — o'chirilgan yoki yopiq (private) bo'lishi mumkin.";
@@ -141,10 +141,10 @@ function describeDownloadError(message: string): string {
         return "🔴 Jonli translyatsiyalarni hozircha yuklab bo'lmaydi.";
     }
     if (m.includes('timeout') || m.includes('etimedout') || m.includes('econnreset') || m.includes('enotfound') || m.includes('econnrefused')) {
-        return "🌐 Tarmoq xatoligi yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.";
+        return "🌐 Manba sayt hozir sekin javob bermoqda, birozdan so'ng qayta urinib ko'ring.";
     }
 
-    return "❌ Videoni yuklab olishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.";
+    return "❌ Nimadir noto'g'ri ketdi, birozdan so'ng qayta urinib ko'ring yoki @pullstackdeveloper ga murojaat qiling.";
 }
 
 // ─── Video Job Processor ──────────────────────────────────────────────────────
