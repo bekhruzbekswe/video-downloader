@@ -16,7 +16,8 @@
 import { Worker, Job } from 'bullmq';
 import ytDlp from 'yt-dlp-exec';
 import { Telegraf } from 'telegraf';
-import { Agent } from 'https';
+import { Agent as HttpsAgent } from 'https';
+import { Agent as HttpAgent } from 'http';
 import path from 'path';
 import fs from 'fs';
 import { createReadStream } from 'fs';
@@ -44,9 +45,12 @@ if (!BOT_TOKEN) throw new Error('BOT_TOKEN must be provided in .env file');
 if (!DB_URL) throw new Error('DB_URL must be provided in .env file');
 
 // Telegraf bot instance (used only to send messages FROM the worker)
+// The agent class must match the apiRoot's protocol — an https.Agent used
+// against a plain-http local Bot API server silently hangs instead of erroring.
+const AgentClass = TELEGRAM_API_ROOT.startsWith('https:') ? HttpsAgent : HttpAgent;
 const telegram = new Telegraf(BOT_TOKEN, {
     telegram: {
-        agent: new Agent({ keepAlive: true, family: 4 }),
+        agent: new AgentClass({ keepAlive: true, family: 4 }),
         apiRoot: TELEGRAM_API_ROOT,
     },
 }).telegram;
