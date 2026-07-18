@@ -108,6 +108,36 @@ async function editStatus(chatId: number, msgId: number | null, text: string, ht
     }
 }
 
+// ─── Helper: Translate a raw yt-dlp/network error into a specific,
+// user-facing Uzbek message instead of one generic string for everything ───
+function describeDownloadError(message: string): string {
+    const m = (message || '').toLowerCase();
+
+    if (m.includes('sign in to confirm') || (m.includes('confirm') && m.includes('bot'))) {
+        return "🤖 YouTube bu so'rovni shubhali (bot) deb belgiladi va kirishni talab qilmoqda. Bu odatda vaqtinchalik bo'ladi — bir necha daqiqadan so'ng qayta urinib ko'ring.";
+    }
+    if (m.includes('429') || m.includes('too many requests')) {
+        return "⏳ Juda ko'p so'rov yuborilgani uchun server vaqtincha cheklamoqda. Bir necha daqiqadan so'ng qayta urinib ko'ring.";
+    }
+    if (m.includes('private video') || m.includes('video unavailable') || m.includes('video is unavailable')) {
+        return "🔒 Bu video mavjud emas — o'chirilgan yoki yopiq (private) bo'lishi mumkin.";
+    }
+    if (m.includes('unsupported url') || m.includes('no video formats found')) {
+        return "⚠️ Bu havoladan video topilmadi. Havola to'g'ri ekanligiga ishonch hosil qiling.";
+    }
+    if (m.includes('not available in your country') || m.includes('geo') && m.includes('restrict')) {
+        return "🌍 Bu video ma'lum mintaqalarda mavjud emas (geografik cheklov).";
+    }
+    if (m.includes('live event') || m.includes('livestream') || (m.includes('live') && m.includes('stream'))) {
+        return "🔴 Jonli translyatsiyalarni hozircha yuklab bo'lmaydi.";
+    }
+    if (m.includes('timeout') || m.includes('etimedout') || m.includes('econnreset') || m.includes('enotfound') || m.includes('econnrefused')) {
+        return "🌐 Tarmoq xatoligi yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.";
+    }
+
+    return "❌ Videoni yuklab olishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.";
+}
+
 // ─── Video Job Processor ──────────────────────────────────────────────────────
 async function processVideoJob(job: Job<VideoJobData>) {
     const { chatId, messageId, statusMessageId, cleanUrl } = job.data;
@@ -178,7 +208,7 @@ async function processVideoJob(job: Job<VideoJobData>) {
         });
     } catch (dlErr: any) {
         console.error(`❌ [Job ${job.id}] Download error:`, dlErr.message);
-        await editStatus(chatId, statusMessageId, `❌ Videoni yuklab olishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.`);
+        await editStatus(chatId, statusMessageId, describeDownloadError(dlErr.message));
         throw dlErr; // Let BullMQ handle retry
     }
 
@@ -245,19 +275,12 @@ async function processVideoJob(job: Job<VideoJobData>) {
     } catch (uploadErr: any) {
         console.error(`❌ [Job ${job.id}] Upload error:`, uploadErr.message);
 
-        if (uploadErr.message?.includes('timeout') || uploadErr.message?.includes('ETIMEOUT')) {
-            await telegram.sendMessage(
-                chatId,
-                `⚠️ Uzr, serverda yuklash vaqti uzayib ketdi. Iltimos, keyinroq qayta urinib ko'ring.`,
-                { reply_parameters: { message_id: messageId } }
-            );
-        } else {
-            await telegram.sendMessage(
-                chatId,
-                `❌ Videoni yuborishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.`,
-                { reply_parameters: { message_id: messageId } }
-            );
-        }
+        const isTimeout = uploadErr.message?.includes('timeout') || uploadErr.message?.includes('ETIMEOUT');
+        const text = isTimeout
+            ? "⚠️ Uzr, Telegramga yuklashda vaqt tugadi (fayl juda katta yoki tarmoq sekin bo'lishi mumkin). Iltimos, keyinroq qayta urinib ko'ring."
+            : describeDownloadError(uploadErr.message);
+
+        await telegram.sendMessage(chatId, text, { reply_parameters: { message_id: messageId } });
         throw uploadErr; // Trigger BullMQ retry
     } finally {
         if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
